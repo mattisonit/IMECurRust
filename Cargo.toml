@@ -1,0 +1,16 @@
+[package]
+name = "ime-cursor"
+version = "1.0.2"
+edition = "2021"
+rust-version = "1.70"
+authors = ["OpenAI"]
+description = "Windows IME state indicator shown in the text cursor and a fallback mouse badge"
+license = "MIT"
+
+[dependencies]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
