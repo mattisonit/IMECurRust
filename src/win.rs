@@ -138,6 +138,33 @@ pub struct GUID {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
+pub struct VARIANT_RECORD {
+    pub pvRecord: *mut c_void,
+    pub pRecInfo: *mut c_void,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub union VARIANT_DATA {
+    pub ll_val: i64,
+    pub l_val: i32,
+    pub bool_val: i16,
+    pub pointer: *mut c_void,
+    pub record: VARIANT_RECORD,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct VARIANT {
+    pub vt: u16,
+    pub reserved1: u16,
+    pub reserved2: u16,
+    pub reserved3: u16,
+    pub data: VARIANT_DATA,
+}
+
+#[repr(C)]
 pub struct NOTIFYICONDATAW {
     pub cbSize: DWORD,
     pub hWnd: HWND,
@@ -253,8 +280,11 @@ pub const CB_ERR: LRESULT = -1;
 pub const BN_CLICKED: u16 = 0;
 pub const IDOK: u16 = 1;
 pub const IDCANCEL: u16 = 2;
+pub const ES_READONLY: DWORD = 0x0000_0800;
+pub const SCI_GETREADONLY: UINT = 2140;
 
 // Get/SetWindowLongPtr.
+pub const GWL_STYLE: i32 = -16;
 pub const GWLP_USERDATA: i32 = -21;
 
 // ShowWindow and SetWindowPos.
@@ -354,6 +384,12 @@ pub const MONITOR_DEFAULTTONEAREST: DWORD = 0x0000_0002;
 
 // HRESULT values.
 pub const S_OK: HRESULT = 0;
+pub const S_FALSE: HRESULT = 1;
+pub const COINIT_APARTMENTTHREADED: DWORD = 0x0000_0002;
+pub const CLSCTX_INPROC_SERVER: DWORD = 0x0000_0001;
+pub const VT_I4: u16 = 3;
+pub const VT_BOOL: u16 = 11;
+pub const VARIANT_FALSE: i16 = 0;
 
 // Sound flags.
 pub const SND_ASYNC: DWORD = 0x0001;
@@ -442,6 +478,8 @@ extern "system" {
     pub fn GetParent(hWnd: HWND) -> HWND;
     pub fn GetAncestor(hWnd: HWND, gaFlags: UINT) -> HWND;
     pub fn IsWindow(hWnd: HWND) -> BOOL;
+    pub fn IsWindowEnabled(hWnd: HWND) -> BOOL;
+    pub fn GetClassNameW(hWnd: HWND, lpClassName: PWSTR, nMaxCount: i32) -> i32;
 
     pub fn GetCursorPos(lpPoint: *mut POINT) -> BOOL;
     pub fn MonitorFromPoint(pt: POINT, dwFlags: DWORD) -> HMONITOR;
@@ -528,6 +566,24 @@ extern "system" {
     pub fn GetDlgItem(hDlg: HWND, nIDDlgItem: i32) -> HWND;
     pub fn SetWindowTextW(hWnd: HWND, lpString: PCWSTR) -> BOOL;
     pub fn SetProcessDPIAware() -> BOOL;
+}
+
+#[link(name = "ole32")]
+extern "system" {
+    pub fn CoInitializeEx(pvReserved: *mut c_void, dwCoInit: DWORD) -> HRESULT;
+    pub fn CoUninitialize();
+    pub fn CoCreateInstance(
+        rclsid: *const GUID,
+        pUnkOuter: *mut c_void,
+        dwClsContext: DWORD,
+        riid: *const GUID,
+        ppv: *mut *mut c_void,
+    ) -> HRESULT;
+}
+
+#[link(name = "oleaut32")]
+extern "system" {
+    pub fn VariantClear(pvarg: *mut VARIANT) -> HRESULT;
 }
 
 #[link(name = "gdi32")]
@@ -626,6 +682,7 @@ mod tests {
             assert_eq!(size_of::<TPMPARAMS>(), 20);
             assert_eq!(size_of::<WNDCLASSW>(), 72);
             assert_eq!(size_of::<MSG>(), 48);
+            assert_eq!(size_of::<VARIANT>(), 24);
         }
         #[cfg(target_pointer_width = "32")]
         {
@@ -637,6 +694,7 @@ mod tests {
             assert_eq!(size_of::<TPMPARAMS>(), 20);
             assert_eq!(size_of::<WNDCLASSW>(), 40);
             assert_eq!(size_of::<MSG>(), 32);
+            assert_eq!(size_of::<VARIANT>(), 16);
         }
     }
 }

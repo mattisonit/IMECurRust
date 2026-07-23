@@ -5,6 +5,8 @@ mod config;
 #[cfg(windows)]
 mod assets;
 #[cfg(windows)]
+mod editability;
+#[cfg(windows)]
 mod ime;
 #[cfg(windows)]
 mod win;
@@ -23,6 +25,7 @@ fn main() {
 mod windows_app {
     use crate::assets::*;
     use crate::config::{Config, ImeTargetMode};
+    use crate::editability::{Editability, EditabilityDetector};
     use crate::ime::{root_window, window_at_cursor, ImeEngine, ImeSnapshot, Validity};
     use crate::win::*;
     use std::ffi::{c_void, OsStr};
@@ -33,7 +36,7 @@ mod windows_app {
     use std::ptr::{null, null_mut};
     use std::time::{Duration, Instant};
 
-    const APP_VERSION: &str = "1.0.2";
+    const APP_VERSION: &str = "1.0.3";
     const MAIN_CLASS: &str = "ImeCursorRust.MainWindow";
     const BADGE_CLASS: &str = "ImeCursorRust.BadgeWindow";
     const SETTINGS_CLASS: &str = "ImeCursorRust.SettingsWindow";
@@ -197,6 +200,7 @@ mod windows_app {
         config_path: PathBuf,
         config: Config,
         ime_engine: ImeEngine,
+        editability_detector: EditabilityDetector,
         icons: IconSet,
 
         tray_added: bool,
@@ -209,7 +213,9 @@ mod windows_app {
         cleared_unknown: bool,
         cursor_apply_ok: bool,
         cursor_modified: bool,
+        last_cursor_restore_attempt: Option<Instant>,
         was_text_cursor: bool,
+        was_read_only_text: bool,
         force_cursor_refresh: bool,
 
         badge_visible: bool,
@@ -240,6 +246,7 @@ mod windows_app {
                 config_path,
                 config,
                 ime_engine: ImeEngine::default(),
+                editability_detector: EditabilityDetector::new(),
                 icons,
                 tray_added: false,
                 tray_display: None,
@@ -251,7 +258,9 @@ mod windows_app {
                 cleared_unknown: false,
                 cursor_apply_ok: false,
                 cursor_modified: false,
+                last_cursor_restore_attempt: None,
                 was_text_cursor: false,
+                was_read_only_text: false,
                 force_cursor_refresh: true,
                 badge_visible: false,
                 badge_kind: None,
@@ -287,13 +296,35 @@ mod windows_app {
                     self.cleared_unknown = false;
                 }
                 self.was_text_cursor = false;
+                self.was_read_only_text = false;
                 return;
             }
 
-            if !self.was_text_cursor {
+            let editability = self.editability_detector.at_cursor();
+            if editability == Editability::ReadOnly {
+                self.hide_badge();
+                let retry_restore = self.cursor_modified
+                    && self.last_cursor_restore_attempt.map_or(true, |last| {
+                        Instant::now()
+                            .checked_duration_since(last)
+                            .is_some_and(|elapsed| elapsed > FAILED_CURSOR_RETRY)
+                    });
+                if !self.was_read_only_text || retry_restore {
+                    self.restore_windows_cursor_scheme();
+                }
+                self.was_text_cursor = true;
+                self.was_read_only_text = true;
+                self.force_cursor_refresh = true;
+                self.invalid_since = None;
+                self.cleared_unknown = false;
+                return;
+            }
+
+            if !self.was_text_cursor || self.was_read_only_text {
                 self.force_cursor_refresh = true;
             }
             self.was_text_cursor = true;
+            self.was_read_only_text = false;
 
             let snapshot = self.ime_engine.query(self.config.ime_target_mode);
             self.show_ime(snapshot);
@@ -387,6 +418,19 @@ mod windows_app {
             self.update_badge(kind, snapshot.target);
         }
 
+        /// Restores the user's actual Windows cursor scheme instead of drawing
+        /// a custom plain I-Beam over selectable, read-only text.
+        unsafe fn restore_windows_cursor_scheme(&mut self) -> bool {
+            self.last_cursor_restore_attempt = Some(Instant::now());
+            let restored = SystemParametersInfoW(SPI_SETCURSORS, 0, null_mut(), 0) != FALSE;
+            if restored {
+                self.cursor_modified = false;
+                self.cursor_apply_ok = false;
+                self.last_cursor_apply = None;
+            }
+            restored
+        }
+
         unsafe fn apply_cursor(&mut self, variant: CursorVariant) -> bool {
             let hex = match variant {
                 CursorVariant::Plain => CURSOR_DEFAULT_HEX,
@@ -424,6 +468,7 @@ mod windows_app {
             self.cursor_apply_ok = ok;
             if ok {
                 self.cursor_modified = true;
+                self.last_cursor_restore_attempt = None;
             }
             ok
         }
@@ -936,8 +981,7 @@ mod windows_app {
             }
 
             if self.cursor_modified {
-                SystemParametersInfoW(SPI_SETCURSORS, 0, null_mut(), 0);
-                self.cursor_modified = false;
+                self.restore_windows_cursor_scheme();
             }
             self.icons.destroy();
 
@@ -1167,6 +1211,7 @@ mod windows_app {
                 state.old_kind = None;
                 state.last_cursor_apply = None;
                 state.was_text_cursor = false;
+                state.was_read_only_text = false;
                 state.force_cursor_refresh = true;
                 0
             }

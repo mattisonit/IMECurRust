@@ -1,5 +1,20 @@
 # 검증 기록
 
+## 1.0.3 읽기 전용 텍스트 제외 수정
+
+다음 항목을 점검했습니다.
+
+- I-Beam 판정 이후, IME 조회 이전에 `EditabilityDetector::at_cursor`가 실행되는지 확인
+- 읽기 전용 판정 시 IME 엔진 호출과 배지 표시 없이 즉시 반환하는지 확인
+- 읽기 전용 진입 시 `SystemParametersInfoW(SPI_SETCURSORS, ...)`로 Windows 커서 구성표를 복원하는지 확인
+- 복원 실패 시 1초 간격으로만 재시도해 50ms 타이머에서 API를 반복 호출하지 않는지 확인
+- 표준 `Edit`/`RichEdit`의 `ES_READONLY`, Scintilla의 `SCI_GETREADONLY` 검사 포함 여부 확인
+- UI Automation에서 `Value.IsReadOnly`, `TextEdit`, `ControlType`, Legacy 접근성 상태를 검사하는지 확인
+- `GetCurrentPropertyValueEx`의 `ignoreDefaultValue=TRUE` 경로를 사용해 미지원 속성의 기본값을 실제 상태로 오인하지 않는지 확인
+- 텍스트 자식에서 편집 가능한 부모까지 최대 6단계 탐색해 `contenteditable` 계열을 읽기 전용으로 오판하지 않도록 구성했는지 확인
+- UI Automation 및 표준 컨트롤 판별 결과를 같은 위치에서 175ms 캐시하는지 확인
+- 알 수 없는 비표준 프레임워크는 기존 동작을 유지하고 강제로 읽기 전용 처리하지 않는지 확인
+
 ## 1.0.2 I-Beam 전용 처리 수정
 
 다음 항목을 점검했습니다.
@@ -27,19 +42,20 @@
 
 `python tools/static_check.py`를 실행해 다음 항목을 통과했습니다.
 
-- `Cargo.toml`, `Cargo.lock`, 프로그램 버전 `1.0.2` 일치
+- `Cargo.toml`, `Cargo.lock`, 프로그램 버전 `1.0.3` 일치
 - 모든 Rust 소스의 문자열, 주석, 괄호 균형
 - 커서 6종 각 128바이트, 트레이 아이콘 4종 각 296바이트
 - 예제 WAV 3개의 RIFF/WAVE 구조와 유효한 오디오 프레임
-- 새 Win32 API, 구조체, 메뉴 배치 함수 포함 여부
+- 새 Win32/UI Automation API, `VARIANT` 구조체, 읽기 전용 판별 및 메뉴 배치 함수 포함 여부
 - 기존 `TrackPopupMenu` 호출이 메뉴 표시 경로에서 제거되었는지 확인
 
 Clang의 Windows MSVC 대상 레이아웃 검사도 x64와 x86에서 통과했습니다.
 
 - x64: `NOTIFYICONIDENTIFIER` 40바이트, `MONITORINFO` 40바이트, `TPMPARAMS` 20바이트
 - x86: `NOTIFYICONIDENTIFIER` 28바이트, `MONITORINFO` 40바이트, `TPMPARAMS` 20바이트
+- UI Automation `VARIANT`: x64 24바이트, x86 16바이트
 - 기존 구조체 검사: x64 `GUITHREADINFO` 72, `CURSORINFO` 24, `NOTIFYICONDATAW` 976; x86 `GUITHREADINFO` 48, `CURSORINFO` 20, `NOTIFYICONDATAW` 956
 
 ## 실행 환경 제한
 
-현재 제작 환경은 Linux이며 Rust 컴파일러와 Windows GUI 세션이 제공되지 않았습니다. 따라서 이 환경에서는 `cargo test`, Windows 실행 파일 빌드 및 실제 포인터 전환/IME 표시 시험을 수행하지 못했습니다. 대신 의존성 없는 정적 검사로 소스 구조, 버전, 자산, I-Beam 선행 게이트와 트레이 메뉴 회귀 조건을 점검했습니다. Windows에서 `build.cmd`를 실행하면 `cargo test` 후 Release 실행 파일을 생성합니다.
+현재 제작 환경에는 Rust 컴파일러와 Windows GUI 세션이 제공되지 않았습니다. 따라서 실제 Windows 앱별 UI Automation 공급자, 포인터 전환 및 IME 표시 동작은 이 환경에서 시험하지 못했습니다. 의존성 없는 정적 검사와 x86/x64 ABI 레이아웃 검사로 소스 구조, 버전, 자산, I-Beam·읽기 전용 선행 게이트와 트레이 메뉴 회귀 조건을 점검했습니다. Windows에서 `build.cmd`를 실행하면 `cargo test` 후 Release 실행 파일을 생성합니다.

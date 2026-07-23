@@ -254,15 +254,16 @@ def main() -> None:
     with (ROOT / "Cargo.toml").open("rb") as handle:
         cargo = tomllib.load(handle)
     assert cargo["package"]["name"] == "ime-cursor"
-    assert cargo["package"]["version"] == "1.0.2"
-    assert 'version = "1.0.2"' in (ROOT / "Cargo.lock").read_text(encoding="utf-8")
+    assert cargo["package"]["version"] == "1.0.3"
+    assert 'version = "1.0.3"' in (ROOT / "Cargo.lock").read_text(encoding="utf-8")
 
     for rust_file in sorted(SRC.glob("*.rs")):
         check_delimiters(rust_file)
 
     main_rs = (SRC / "main.rs").read_text(encoding="utf-8")
     win_rs = (SRC / "win.rs").read_text(encoding="utf-8")
-    assert 'const APP_VERSION: &str = "1.0.2";' in main_rs
+    editability_rs = (SRC / "editability.rs").read_text(encoding="utf-8")
+    assert 'const APP_VERSION: &str = "1.0.3";' in main_rs
 
     for symbol in [
         "NOTIFYICONIDENTIFIER",
@@ -312,6 +313,35 @@ def main() -> None:
     badge_body = main_rs[badge_start:badge_end]
     assert "CurrentCursorClass::IBeam && !self.cursor_apply_ok" in badge_body
     assert "CurrentCursorClass::Unknown =>" not in badge_body
+
+    # Read-only gating must run after I-Beam detection but before any IME query.
+    readonly_gate = timer_body.index("self.editability_detector.at_cursor()")
+    readonly_branch = timer_body.index("Editability::ReadOnly")
+    restore_call = timer_body.index("self.restore_windows_cursor_scheme()")
+    assert gate < readonly_gate < readonly_branch < restore_call < query
+    assert "self.was_read_only_text = true;" in timer_body[:query]
+    assert "self.was_read_only_text = false;" in timer_body
+    assert "editability_detector: EditabilityDetector" in main_rs
+    assert "unsafe fn restore_windows_cursor_scheme" in main_rs
+    assert "SystemParametersInfoW(SPI_SETCURSORS" in main_rs
+
+    for token in [
+        "EditabilityDetector",
+        "UIA_VALUE_IS_READ_ONLY_PROPERTY_ID",
+        "UIA_IS_TEXT_EDIT_PATTERN_AVAILABLE_PROPERTY_ID",
+        "UIA_LEGACY_IACCESSIBLE_STATE_PROPERTY_ID",
+        "classify_standard_window",
+        "ES_READONLY",
+        "SCI_GETREADONLY",
+        "CoCreateInstance",
+        "element_from_point",
+        "tree_walker_parent",
+        "com_method_address(element, 11)",
+        "VariantClear",
+    ]:
+        assert token in editability_rs or token in win_rs, token
+    assert "method(element, property_id, TRUE, value)" in editability_rs
+    assert 'normalized == "edit"' in editability_rs
 
     assets = (SRC / "assets.rs").read_text(encoding="utf-8")
     for name in [
@@ -386,7 +416,7 @@ def main() -> None:
             assert audio.getframerate() > 0
             assert audio.getnframes() > 0
 
-    print("IMECurRust 1.0.2 static checks passed")
+    print("IMECurRust 1.0.3 static checks passed")
 
 
 if __name__ == "__main__":
