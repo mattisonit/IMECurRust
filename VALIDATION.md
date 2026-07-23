@@ -1,5 +1,17 @@
 # 검증 기록
 
+## 1.0.4 브라우저·이메일 본문 오탐 수정
+
+다음 항목을 점검했습니다.
+
+- 사용자 정의 IME 커서는 `Editability::Editable`일 때만 허용하는지 확인
+- `Editability::ReadOnly`뿐 아니라 `Editability::Unknown`도 IME 조회 전에 차단하는지 확인
+- UI Automation 실패·미지원·모호한 웹 문서가 Windows 기본 I-Beam으로 복원되는지 확인
+- UI Automation `Text`/`Document` 요소가 명시적 편집 부모를 찾지 못하면 읽기 전용으로 판정되는지 확인
+- `Value.IsReadOnly=false`, `TextEditPattern=true`, 활성 `Edit` 컨트롤은 입력 가능으로 유지되는지 확인
+- 비편집 영역에서 입력 영역으로 이동하면 강제 갱신 플래그를 설정해 IME 상태를 즉시 다시 읽는지 확인
+- `Unknown`을 허용하던 기존 경로가 제거되어 수신 이메일 본문과 일반 웹 콘텐츠 오탐을 방지하는지 확인
+
 ## 1.0.3 읽기 전용 텍스트 제외 수정
 
 다음 항목을 점검했습니다.
@@ -13,7 +25,7 @@
 - `GetCurrentPropertyValueEx`의 `ignoreDefaultValue=TRUE` 경로를 사용해 미지원 속성의 기본값을 실제 상태로 오인하지 않는지 확인
 - 텍스트 자식에서 편집 가능한 부모까지 최대 6단계 탐색해 `contenteditable` 계열을 읽기 전용으로 오판하지 않도록 구성했는지 확인
 - UI Automation 및 표준 컨트롤 판별 결과를 같은 위치에서 175ms 캐시하는지 확인
-- 알 수 없는 비표준 프레임워크는 기존 동작을 유지하고 강제로 읽기 전용 처리하지 않는지 확인
+- 1.0.3에서는 알 수 없는 비표준 프레임워크를 허용했으나, 1.0.4에서 이 정책을 안전한 기본 거부로 변경
 
 ## 1.0.2 I-Beam 전용 처리 수정
 
@@ -42,7 +54,7 @@
 
 `python tools/static_check.py`를 실행해 다음 항목을 통과했습니다.
 
-- `Cargo.toml`, `Cargo.lock`, 프로그램 버전 `1.0.3` 일치
+- `Cargo.toml`, `Cargo.lock`, 프로그램 버전 `1.0.4` 일치
 - 모든 Rust 소스의 문자열, 주석, 괄호 균형
 - 커서 6종 각 128바이트, 트레이 아이콘 4종 각 296바이트
 - 예제 WAV 3개의 RIFF/WAVE 구조와 유효한 오디오 프레임

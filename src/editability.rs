@@ -46,6 +46,15 @@ pub enum Editability {
     Unknown,
 }
 
+impl Editability {
+    /// Custom IME cursors are allowed only when the target exposes positive
+    /// evidence that it accepts text input. Ambiguous I-Beam surfaces are
+    /// treated like selectable, read-only text.
+    pub fn allows_custom_cursor(self) -> bool {
+        matches!(self, Self::Editable)
+    }
+}
+
 #[derive(Clone, Copy)]
 struct CachedProbe {
     point: POINT,
@@ -108,9 +117,9 @@ impl EditabilityDetector {
         }
     }
 
-    /// Returns `ReadOnly` only when a standard control or UI Automation
-    /// exposes positive evidence that text cannot be edited. Unknown custom
-    /// frameworks retain the previous I-Beam-only behavior.
+    /// Returns `Editable` only when a standard control or UI Automation
+    /// exposes positive evidence that text input is supported. Callers must
+    /// treat `ReadOnly` and `Unknown` as non-editable I-Beam surfaces.
     pub fn at_cursor(&mut self) -> Editability {
         unsafe { self.at_cursor_unsafe() }
     }
@@ -297,7 +306,10 @@ unsafe fn inspect_element(element: *mut c_void) -> NodeEvidence {
         {
             return NodeEvidence::ReadOnly;
         }
-        return NodeEvidence::Unknown;
+
+        // A UIA Edit control is positive input evidence even when a provider
+        // omits ValuePattern (for example password or protected edit fields).
+        return NodeEvidence::Editable;
     }
 
     if legacy_state & STATE_SYSTEM_READONLY != 0
@@ -423,6 +435,13 @@ mod tests {
     fn readonly_and_unavailable_states_are_distinct_bits() {
         assert_eq!(STATE_SYSTEM_READONLY, 0x40);
         assert_eq!(STATE_SYSTEM_UNAVAILABLE, 0x01);
+    }
+
+    #[test]
+    fn only_positive_editable_evidence_allows_custom_cursor() {
+        assert!(Editability::Editable.allows_custom_cursor());
+        assert!(!Editability::ReadOnly.allows_custom_cursor());
+        assert!(!Editability::Unknown.allows_custom_cursor());
     }
 
     #[test]

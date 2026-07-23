@@ -254,8 +254,8 @@ def main() -> None:
     with (ROOT / "Cargo.toml").open("rb") as handle:
         cargo = tomllib.load(handle)
     assert cargo["package"]["name"] == "ime-cursor"
-    assert cargo["package"]["version"] == "1.0.3"
-    assert 'version = "1.0.3"' in (ROOT / "Cargo.lock").read_text(encoding="utf-8")
+    assert cargo["package"]["version"] == "1.0.4"
+    assert 'version = "1.0.4"' in (ROOT / "Cargo.lock").read_text(encoding="utf-8")
 
     for rust_file in sorted(SRC.glob("*.rs")):
         check_delimiters(rust_file)
@@ -263,7 +263,7 @@ def main() -> None:
     main_rs = (SRC / "main.rs").read_text(encoding="utf-8")
     win_rs = (SRC / "win.rs").read_text(encoding="utf-8")
     editability_rs = (SRC / "editability.rs").read_text(encoding="utf-8")
-    assert 'const APP_VERSION: &str = "1.0.3";' in main_rs
+    assert 'const APP_VERSION: &str = "1.0.4";' in main_rs
 
     for symbol in [
         "NOTIFYICONIDENTIFIER",
@@ -316,11 +316,11 @@ def main() -> None:
 
     # Read-only gating must run after I-Beam detection but before any IME query.
     readonly_gate = timer_body.index("self.editability_detector.at_cursor()")
-    readonly_branch = timer_body.index("Editability::ReadOnly")
+    readonly_branch = timer_body.index("!editability.allows_custom_cursor()")
     restore_call = timer_body.index("self.restore_windows_cursor_scheme()")
     assert gate < readonly_gate < readonly_branch < restore_call < query
-    assert "self.was_read_only_text = true;" in timer_body[:query]
-    assert "self.was_read_only_text = false;" in timer_body
+    assert "self.was_non_editable_text = true;" in timer_body[:query]
+    assert "self.was_non_editable_text = false;" in timer_body
     assert "editability_detector: EditabilityDetector" in main_rs
     assert "unsafe fn restore_windows_cursor_scheme" in main_rs
     assert "SystemParametersInfoW(SPI_SETCURSORS" in main_rs
@@ -342,6 +342,10 @@ def main() -> None:
         assert token in editability_rs or token in win_rs, token
     assert "method(element, property_id, TRUE, value)" in editability_rs
     assert 'normalized == "edit"' in editability_rs
+    assert "pub fn allows_custom_cursor" in editability_rs
+    assert "matches!(self, Self::Editable)" in editability_rs
+    assert "return NodeEvidence::Editable;" in editability_rs
+    assert "!editability.allows_custom_cursor()" in timer_body
 
     assets = (SRC / "assets.rs").read_text(encoding="utf-8")
     for name in [
@@ -416,7 +420,7 @@ def main() -> None:
             assert audio.getframerate() > 0
             assert audio.getnframes() > 0
 
-    print("IMECurRust 1.0.3 static checks passed")
+    print("IMECurRust 1.0.4 static checks passed")
 
 
 if __name__ == "__main__":
