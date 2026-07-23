@@ -1,5 +1,17 @@
 # 검증 기록
 
+## 1.0.5 인라인 코드 오탐 수정
+
+다음 항목을 점검했습니다.
+
+- UI Automation `AriaRole=code`, `doc-code`, `pre` 요소가 `CodeLikeText`로 분류되는지 확인
+- 코드 역할 요소가 `ValuePattern` 또는 `TextEditPattern`을 잘못 노출해도 입력 가능으로 판정하지 않는지 확인
+- 코드 역할 자식을 확인한 뒤에는 상위 `Document`의 편집 패턴이 읽기 전용 판정을 덮어쓰지 않는지 확인
+- 키보드 포커스 가능한 UIA `Edit` 및 ARIA `textbox`/`searchbox` 입력 요소는 계속 입력 가능으로 판정되는지 확인
+- 일반 브라우저 `Document`는 `TextEditPattern=true`와 `IsKeyboardFocusable=true`가 모두 확인된 경우에만 편집 가능으로 판정되는지 확인
+- UI Automation BSTR 속성을 `SysStringLen`으로 읽고 `VariantClear`로 해제하는지 확인
+- `ValuePattern`/`TextEditPattern`만 있는 사용자 정의 요소는 안전하게 `Unknown`으로 유지되어 Windows 기본 I-Beam을 사용하는지 확인
+
 ## 1.0.4 브라우저·이메일 본문 오탐 수정
 
 다음 항목을 점검했습니다.
@@ -54,7 +66,7 @@
 
 `python tools/static_check.py`를 실행해 다음 항목을 통과했습니다.
 
-- `Cargo.toml`, `Cargo.lock`, 프로그램 버전 `1.0.4` 일치
+- `Cargo.toml`, `Cargo.lock`, 프로그램 버전 `1.0.5` 일치
 - 모든 Rust 소스의 문자열, 주석, 괄호 균형
 - 커서 6종 각 128바이트, 트레이 아이콘 4종 각 296바이트
 - 예제 WAV 3개의 RIFF/WAVE 구조와 유효한 오디오 프레임

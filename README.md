@@ -4,6 +4,15 @@ Windows의 현재 입력기 상태를 읽어 **실제로 입력 가능한 텍스
 
 기존 `IMECur_improved.ahk`의 핵심 동작을 Rust와 Win32 API로 옮겼으며, 외부 Rust 크레이트 없이 동작하도록 구성했습니다.
 
+## 1.0.5 변경 사항
+
+- 회색 인라인 코드와 코드 블록처럼 선택만 가능한 `code`/`pre` 요소를 프로그램 I-Beam 적용 대상에서 제외
+- UI Automation의 `ValuePattern` 또는 `TextEditPattern`만 노출되는 요소를 입력 가능으로 간주하던 느슨한 판정 제거
+- 브라우저 계열 입력 요소는 키보드 포커스가 가능한 `Edit`, `textbox`, `searchbox`, `spinbutton` 역할일 때만 입력 가능으로 판정
+- 일반 `Document`는 키보드 포커스와 `TextEditPattern`이 모두 확인된 `contenteditable` 표면만 허용
+- 코드 역할의 자식 요소를 발견한 경우 상위 브라우저 문서의 광범위한 편집 패턴이 판정을 덮어쓰지 못하도록 차단
+- UI Automation `AriaRole` 문자열을 BSTR로 안전하게 읽어 코드 표시 요소와 실제 입력 요소를 구분
+
 ## 1.0.4 변경 사항
 
 - 수신 이메일 본문과 일반 웹 콘텐츠처럼 선택만 가능한 I-Beam 영역을 프로그램 커서 적용 대상에서 제외

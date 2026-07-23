@@ -36,7 +36,7 @@ mod windows_app {
     use std::ptr::{null, null_mut};
     use std::time::{Duration, Instant};
 
-    const APP_VERSION: &str = "1.0.4";
+    const APP_VERSION: &str = "1.0.5";
     const MAIN_CLASS: &str = "ImeCursorRust.MainWindow";
     const BADGE_CLASS: &str = "ImeCursorRust.BadgeWindow";
     const SETTINGS_CLASS: &str = "ImeCursorRust.SettingsWindow";

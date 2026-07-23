@@ -254,8 +254,8 @@ def main() -> None:
     with (ROOT / "Cargo.toml").open("rb") as handle:
         cargo = tomllib.load(handle)
     assert cargo["package"]["name"] == "ime-cursor"
-    assert cargo["package"]["version"] == "1.0.4"
-    assert 'version = "1.0.4"' in (ROOT / "Cargo.lock").read_text(encoding="utf-8")
+    assert cargo["package"]["version"] == "1.0.5"
+    assert 'version = "1.0.5"' in (ROOT / "Cargo.lock").read_text(encoding="utf-8")
 
     for rust_file in sorted(SRC.glob("*.rs")):
         check_delimiters(rust_file)
@@ -263,7 +263,7 @@ def main() -> None:
     main_rs = (SRC / "main.rs").read_text(encoding="utf-8")
     win_rs = (SRC / "win.rs").read_text(encoding="utf-8")
     editability_rs = (SRC / "editability.rs").read_text(encoding="utf-8")
-    assert 'const APP_VERSION: &str = "1.0.4";' in main_rs
+    assert 'const APP_VERSION: &str = "1.0.5";' in main_rs
 
     for symbol in [
         "NOTIFYICONIDENTIFIER",
@@ -338,13 +338,22 @@ def main() -> None:
         "tree_walker_parent",
         "com_method_address(element, 11)",
         "VariantClear",
+        "UIA_ARIA_ROLE_PROPERTY_ID",
+        "property_string",
+        "SysStringLen",
+        "VT_BSTR",
     ]:
         assert token in editability_rs or token in win_rs, token
     assert "method(element, property_id, TRUE, value)" in editability_rs
     assert 'normalized == "edit"' in editability_rs
     assert "pub fn allows_custom_cursor" in editability_rs
     assert "matches!(self, Self::Editable)" in editability_rs
-    assert "return NodeEvidence::Editable;" in editability_rs
+    assert "NodeEvidence::EditableField" in editability_rs
+    assert "NodeEvidence::EditableDocument" in editability_rs
+    assert "NodeEvidence::CodeLikeText" in editability_rs
+    assert "is_code_like_aria_role" in editability_rs
+    assert "keyboard_focusable == Some(true)" in editability_rs
+    assert "EditableDocument if !saw_code_like_text" in editability_rs
     assert "!editability.allows_custom_cursor()" in timer_body
 
     assets = (SRC / "assets.rs").read_text(encoding="utf-8")
@@ -420,7 +429,7 @@ def main() -> None:
             assert audio.getframerate() > 0
             assert audio.getnframes() > 0
 
-    print("IMECurRust 1.0.4 static checks passed")
+    print("IMECurRust 1.0.5 static checks passed")
 
 
 if __name__ == "__main__":

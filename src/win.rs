@@ -388,6 +388,7 @@ pub const S_FALSE: HRESULT = 1;
 pub const COINIT_APARTMENTTHREADED: DWORD = 0x0000_0002;
 pub const CLSCTX_INPROC_SERVER: DWORD = 0x0000_0001;
 pub const VT_I4: u16 = 3;
+pub const VT_BSTR: u16 = 8;
 pub const VT_BOOL: u16 = 11;
 pub const VARIANT_FALSE: i16 = 0;
 
@@ -584,6 +585,7 @@ extern "system" {
 #[link(name = "oleaut32")]
 extern "system" {
     pub fn VariantClear(pvarg: *mut VARIANT) -> HRESULT;
+    pub fn SysStringLen(pbstr: *const u16) -> UINT;
 }
 
 #[link(name = "gdi32")]

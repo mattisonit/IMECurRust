@@ -16,6 +16,7 @@ const UIA_IS_ENABLED_PROPERTY_ID: i32 = 30010;
 const UIA_IS_VALUE_PATTERN_AVAILABLE_PROPERTY_ID: i32 = 30043;
 const UIA_VALUE_IS_READ_ONLY_PROPERTY_ID: i32 = 30046;
 const UIA_LEGACY_IACCESSIBLE_STATE_PROPERTY_ID: i32 = 30096;
+const UIA_ARIA_ROLE_PROPERTY_ID: i32 = 30101;
 const UIA_IS_TEXT_EDIT_PATTERN_AVAILABLE_PROPERTY_ID: i32 = 30149;
 
 const UIA_EDIT_CONTROL_TYPE_ID: i32 = 50004;
@@ -65,9 +66,11 @@ struct CachedProbe {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NodeEvidence {
-    Editable,
+    EditableField,
+    EditableDocument,
     ReadOnly,
     SelectableText,
+    CodeLikeText,
     Unknown,
 }
 
@@ -169,15 +172,25 @@ impl EditabilityDetector {
         };
 
         let mut saw_selectable_text = false;
+        let mut saw_code_like_text = false;
         for _ in 0..MAX_UIA_PARENT_DEPTH {
             match inspect_element(element) {
-                NodeEvidence::Editable => {
+                NodeEvidence::EditableField => {
                     release_com(element);
                     return Editability::Editable;
                 }
+                NodeEvidence::EditableDocument if !saw_code_like_text => {
+                    release_com(element);
+                    return Editability::Editable;
+                }
+                NodeEvidence::EditableDocument => {}
                 NodeEvidence::ReadOnly => {
                     release_com(element);
                     return Editability::ReadOnly;
+                }
+                NodeEvidence::CodeLikeText => {
+                    saw_selectable_text = true;
+                    saw_code_like_text = true;
                 }
                 NodeEvidence::SelectableText => saw_selectable_text = true,
                 NodeEvidence::Unknown => {}
@@ -279,47 +292,93 @@ unsafe fn inspect_element(element: *mut c_void) -> NodeEvidence {
         return NodeEvidence::ReadOnly;
     }
 
-    let value_pattern = property_bool(element, UIA_IS_VALUE_PATTERN_AVAILABLE_PROPERTY_ID)
-        .unwrap_or(false);
-    if value_pattern {
-        return match property_bool(element, UIA_VALUE_IS_READ_ONLY_PROPERTY_ID) {
-            Some(false) => NodeEvidence::Editable,
-            Some(true) => NodeEvidence::ReadOnly,
-            None => NodeEvidence::Unknown,
-        };
-    }
-
-    if property_bool(element, UIA_IS_TEXT_EDIT_PATTERN_AVAILABLE_PROPERTY_ID) == Some(true) {
-        return NodeEvidence::Editable;
-    }
-
     let control_type = property_i32(element, UIA_CONTROL_TYPE_PROPERTY_ID);
+    let keyboard_focusable = property_bool(element, UIA_IS_KEYBOARD_FOCUSABLE_PROPERTY_ID);
     let legacy_state = property_i32(element, UIA_LEGACY_IACCESSIBLE_STATE_PROPERTY_ID)
         .unwrap_or(0);
-    if legacy_state & STATE_SYSTEM_UNAVAILABLE != 0 {
+    let aria_role = property_string(element, UIA_ARIA_ROLE_PROPERTY_ID)
+        .map(|role| role.trim().to_ascii_lowercase());
+
+    if legacy_state & (STATE_SYSTEM_UNAVAILABLE | STATE_SYSTEM_READONLY) != 0 {
         return NodeEvidence::ReadOnly;
     }
 
-    if control_type == Some(UIA_EDIT_CONTROL_TYPE_ID) {
-        if legacy_state & STATE_SYSTEM_READONLY != 0
-            || property_bool(element, UIA_IS_KEYBOARD_FOCUSABLE_PROPERTY_ID) == Some(false)
-        {
-            return NodeEvidence::ReadOnly;
-        }
-
-        // A UIA Edit control is positive input evidence even when a provider
-        // omits ValuePattern (for example password or protected edit fields).
-        return NodeEvidence::Editable;
+    let value_pattern = property_bool(element, UIA_IS_VALUE_PATTERN_AVAILABLE_PROPERTY_ID)
+        .unwrap_or(false);
+    let value_is_read_only = value_pattern
+        .then(|| property_bool(element, UIA_VALUE_IS_READ_ONLY_PROPERTY_ID))
+        .flatten();
+    if value_is_read_only == Some(true) {
+        return NodeEvidence::ReadOnly;
     }
 
-    if legacy_state & STATE_SYSTEM_READONLY != 0
-        || control_type == Some(UIA_TEXT_CONTROL_TYPE_ID)
-        || control_type == Some(UIA_DOCUMENT_CONTROL_TYPE_ID)
+    let text_edit_pattern =
+        property_bool(element, UIA_IS_TEXT_EDIT_PATTERN_AVAILABLE_PROPERTY_ID) == Some(true);
+
+    // Chromium exposes inline <code> and similar selectable fragments with
+    // inconsistent Value/TextEdit pattern metadata. ARIA role "code" is
+    // explicit evidence that the element is display text, not an input field.
+    if aria_role.as_deref().is_some_and(is_code_like_aria_role) {
+        return NodeEvidence::CodeLikeText;
+    }
+
+    // Custom browser controls are accepted only when their semantic role says
+    // that they are text-entry controls and they can receive keyboard focus.
+    if aria_role
+        .as_deref()
+        .is_some_and(is_text_entry_aria_role)
     {
-        NodeEvidence::SelectableText
-    } else {
-        NodeEvidence::Unknown
+        return if keyboard_focusable == Some(true) {
+            NodeEvidence::EditableField
+        } else {
+            NodeEvidence::ReadOnly
+        };
     }
+
+    match control_type {
+        Some(UIA_EDIT_CONTROL_TYPE_ID) => {
+            // A genuine UIA Edit control must be focusable. This extra gate
+            // prevents inline code, selectable labels and browser decorations
+            // that incorrectly expose ValuePattern from being treated as input.
+            if keyboard_focusable == Some(true) {
+                NodeEvidence::EditableField
+            } else if keyboard_focusable == Some(false) {
+                NodeEvidence::ReadOnly
+            } else {
+                NodeEvidence::Unknown
+            }
+        }
+        Some(UIA_DOCUMENT_CONTROL_TYPE_ID) => {
+            // A normal browser/mail document is selectable text. Only a
+            // keyboard-focusable Document with TextEditPattern is considered a
+            // contenteditable surface.
+            if text_edit_pattern && keyboard_focusable == Some(true) {
+                NodeEvidence::EditableDocument
+            } else {
+                NodeEvidence::SelectableText
+            }
+        }
+        Some(UIA_TEXT_CONTROL_TYPE_ID) => NodeEvidence::SelectableText,
+        _ => {
+            // ValuePattern or TextEditPattern alone is weak evidence because
+            // Chromium may expose those patterns on non-editable inline
+            // content. Unknown custom controls therefore remain blocked unless
+            // their ARIA role explicitly identifies a text-entry surface.
+            NodeEvidence::Unknown
+        }
+    }
+}
+
+fn is_code_like_aria_role(role: &str) -> bool {
+    role.split_ascii_whitespace().any(|token| {
+        matches!(token, "code" | "doc-code" | "pre" | "presentation")
+    })
+}
+
+fn is_text_entry_aria_role(role: &str) -> bool {
+    role.split_ascii_whitespace().any(|token| {
+        matches!(token, "textbox" | "searchbox" | "spinbutton")
+    })
 }
 
 unsafe fn element_from_point(automation: *mut c_void, point: POINT) -> Option<*mut c_void> {
@@ -392,6 +451,29 @@ unsafe fn property_i32(element: *mut c_void, property_id: i32) -> Option<i32> {
     result
 }
 
+unsafe fn property_string(element: *mut c_void, property_id: i32) -> Option<String> {
+    let mut value: VARIANT = zeroed();
+    if !get_property(element, property_id, &mut value) {
+        VariantClear(&mut value);
+        return None;
+    }
+
+    let result = if value.vt == VT_BSTR {
+        let pointer = value.data.pointer as *const u16;
+        if pointer.is_null() {
+            Some(String::new())
+        } else {
+            let length = SysStringLen(pointer) as usize;
+            let text = std::slice::from_raw_parts(pointer, length);
+            Some(String::from_utf16_lossy(text))
+        }
+    } else {
+        None
+    };
+    VariantClear(&mut value);
+    result
+}
+
 unsafe fn get_property(element: *mut c_void, property_id: i32, value: *mut VARIANT) -> bool {
     type Method =
         unsafe extern "system" fn(*mut c_void, i32, BOOL, *mut VARIANT) -> HRESULT;
@@ -442,6 +524,21 @@ mod tests {
         assert!(Editability::Editable.allows_custom_cursor());
         assert!(!Editability::ReadOnly.allows_custom_cursor());
         assert!(!Editability::Unknown.allows_custom_cursor());
+    }
+
+    #[test]
+    fn inline_code_roles_are_never_text_entry_evidence() {
+        assert!(is_code_like_aria_role("code"));
+        assert!(is_code_like_aria_role("doc-code"));
+        assert!(!is_text_entry_aria_role("code"));
+    }
+
+    #[test]
+    fn only_explicit_text_entry_roles_are_accepted() {
+        assert!(is_text_entry_aria_role("textbox"));
+        assert!(is_text_entry_aria_role("searchbox"));
+        assert!(!is_text_entry_aria_role("document"));
+        assert!(!is_text_entry_aria_role("generic"));
     }
 
     #[test]
